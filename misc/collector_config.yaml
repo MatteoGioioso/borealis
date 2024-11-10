@@ -1,0 +1,11 @@
+instances:
+  - instanceName: postgres1
+    clusterName: mycluster
+    hostname: postgres_one
+    username: postgres
+    password: zalando
+
+prometheusHost: victoriametrics
+prometheusPort: 8428
+borealisHost: console
+borealisPort: 8081

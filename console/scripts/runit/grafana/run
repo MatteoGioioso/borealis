@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o nounset
+
+export GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+
+if [ ! -d "$GF_PATHS_PLUGINS" ]; then
+    mkdir "$GF_PATHS_PLUGINS"
+fi
+
+export HOME="$GF_PATHS_HOME"
+
+if [ ! -z "${GF_INSTALL_PLUGINS}" ]; then
+  OLDIFS=$IFS
+  IFS=','
+  for plugin in ${GF_INSTALL_PLUGINS}; do
+    IFS=$OLDIFS
+    if [[ $plugin =~ .*\;.* ]]; then
+        pluginUrl=$(echo "$plugin" | cut -d';' -f 1)
+        pluginInstallFolder=$(echo "$plugin" | cut -d';' -f 2)
+        grafana-cli --pluginUrl ${pluginUrl} --pluginsDir "${GF_PATHS_PLUGINS}" plugins install "${pluginInstallFolder}"
+    else
+        grafana-cli --pluginsDir "${GF_PATHS_PLUGINS}" plugins install ${plugin}
+    fi
+  done
+fi
+
+exec 2>&1
+exec env grafana-server                                         \
+  --homepath="$GF_PATHS_HOME"                               \
+  --config="$GF_PATHS_CONFIG"                               \
+  --packaging=docker                                        \
+  "$@"                                                      \
+  cfg:default.log.mode="console"                            \
+  cfg:default.paths.data="$GF_PATHS_DATA"                   \
+  cfg:default.paths.logs="$GF_PATHS_LOGS"                   \
+  cfg:default.paths.plugins="$GF_PATHS_PLUGINS"             \
+  cfg:default.paths.provisioning="$GF_PATHS_PROVISIONING"

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ (split "/" (index .Values "postgres-operator" "configKubernetes" "pod_environment_configmap"))._1 }}
+  namespace: {{.Release.Namespace}}
+data:
+  USE_WALG_BACKUP: "true"
+  USE_WALG_RESTORE: "true"
+  AWS_ACCESS_KEY_ID: 'postgresql'
+  AWS_SECRET_ACCESS_KEY: 'supersecret'
+  AWS_S3_FORCE_PATH_STYLE: "true"
+  AWS_ENDPOINT: "http://{{.Values.backup.endpoint}}:{{.Values.backup.port}}"
+  BACKUP_NUM_TO_RETAIN: "5"

@@ -1,0 +1,20 @@
+apiVersion: v2
+name: borealis
+description: Chart to deploy postgres on kubernetes using zalando postgres operator
+type: application
+version: 0.0.0
+appVersion: 0.0.0
+maintainers:
+  - name: Matteo Gioioso
+    email: info@matteogioioso.com
+keywords:
+  - borealisdb
+  - kubernetes
+  - postgresql
+dependencies:
+  - name: postgres-operator
+    version: "^1"
+    repository: https://opensource.zalando.com/postgres-operator/charts/postgres-operator
+  - name: postgres-operator-ui
+    version: "^1"
+    repository: https://opensource.zalando.com/postgres-operator/charts/postgres-operator-ui

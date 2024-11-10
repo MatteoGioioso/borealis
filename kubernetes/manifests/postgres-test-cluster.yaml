@@ -1,0 +1,34 @@
+kind: "postgresql"
+apiVersion: "acid.zalan.do/v1"
+
+metadata:
+  name: "my-test-cluster"
+  namespace: "default"
+  labels:
+    team: myteam
+
+spec:
+  teamId: "myteam"
+  postgresql:
+    version: "16"
+  numberOfInstances: 3
+  enableConnectionPooler: true
+  enableReplicaConnectionPooler: true
+  volume:
+    size: "10Gi"
+  users:
+    matteo: []
+  env:
+    - name: WAL_S3_BUCKET
+      value: "my-test-cluster"
+
+#  allowedSourceRanges:
+  # IP ranges to access your cluster go here
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 500m
+      memory: 500Mi

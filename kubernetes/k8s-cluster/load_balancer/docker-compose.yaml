@@ -1,0 +1,8 @@
+version: "3.9"
+
+services:
+  load_balancer:
+    image: haproxy-local:latest
+    build:
+      context: .
+    network_mode: host

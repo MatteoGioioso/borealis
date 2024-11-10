@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbench
+  labels:
+    app: pgbench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgbench
+  template:
+    metadata:
+      labels:
+        app: pgbench
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: pgbench
+          image: postgres:16
+          command: [ "/bin/sh" ]
+          args:
+            - -c
+            - >-
+              pgbench -i -s 1 postgres &&
+              sleep 10 &&
+              pgbench -c 8 -T 3600 -s 5 postgres
+          env:
+            - name: PGHOST
+              value: "my-test-cluster-pooler"
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: postgres.my-test-cluster.credentials.postgresql.acid.zalan.do
+            - name: PGUSER
+              value: "postgres"
+            - name: PGDATABASE
+              value: "postgres"

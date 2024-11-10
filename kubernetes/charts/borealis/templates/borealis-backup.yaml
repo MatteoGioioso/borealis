@@ -1,0 +1,36 @@
+{{- if .Values.backup.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: borealis-backup
+  namespace: {{.Release.Namespace}}
+  labels:
+    application: borealis-backup
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      application: borealis-backup
+  template:
+    metadata:
+      namespace: {{.Release.Namespace}}
+      labels:
+        application: borealis-backup
+    spec:
+      volumes:
+        - name: infrastructure-volume
+          persistentVolumeClaim:
+            claimName: {{.Values.storage.name}}
+      containers:
+        - name: borealis-backup-leader
+          imagePullPolicy: IfNotPresent
+          image: "{{.Values.backup.imageName}}:{{.Values.backup.imageVersion}}"
+          args:
+            - server -dir=/data -s3
+          ports:
+            - containerPort: {{.Values.backup.port}}
+              hostPort: {{.Values.backup.port}}
+          volumeMounts:
+            - mountPath: "/data"
+              name: infrastructure-volume
+{{- end }}

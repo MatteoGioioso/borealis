@@ -1,0 +1,11 @@
+auth_modules:
+  {{range .Instances}}
+  {{.ClusterName}}:
+    type: userpass
+    userpass:
+      username: "{{.Username}}"
+      password: "{{.Password}}"
+    options:
+      # options become key=value parameters of the DSN
+      sslmode: disable
+    {{end}}

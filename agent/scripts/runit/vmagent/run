@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+exec 2>&1
+exec env $BOREALIS_DIR/vmagent/vmagent-prod \
+           --promscrape.config=$VMAGENT_CONFIG_FILE_PATH \
+           --remoteWrite.url=http://"${PROMETHEUS_HOST}":"${PROMETHEUS_PORT}"/api/v1/write

@@ -1,0 +1,93 @@
+# https://github.com/ongres/stackgres/blob/main/stackgres-k8s/src/operator/src/main/resources/prometheus-postgres-exporter/queries-1.0.yaml
+# https://dba.stackexchange.com/questions/194968/xid-wraparound-metrics-are-unclear
+pg_database_datfrozenxid:
+  master: true
+  query: >
+    SELECT
+      datname,
+      age(d.datfrozenxid) as age_datfrozenxid,
+      mxid_age(d.datminmxid) as age_datminmxid
+    FROM
+      pg_catalog.pg_database d
+    WHERE
+      d.datallowconn
+  metrics:
+    - datname:
+        usage: "LABEL"
+        description: "Database Name"
+    - age_transactionid:
+        usage: "GAUGE"
+        description: "Age of the oldest transaction ID that has not been frozen."
+    - age_multitransactionid:
+        usage: "GAUGE"
+        description: "Age of the oldest multi-transaction ID that has been replaced with a transaction ID."
+
+pg_replication:
+  master: true
+  query: |
+    select
+    case
+      when pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() then 0
+      else extract (EPOCH FROM now() - pg_last_xact_replay_timestamp())::integer
+    end as lag,
+    case
+      when pg_is_in_recovery() then 1
+      else 0
+    end as is_replica
+  metrics:
+    - lag:
+        usage: "GAUGE"
+        description: "Replication lag behind master in seconds"
+    - is_replica:
+        usage: "GAUGE"
+        description: "Indicates if this host is a replica"
+
+pg_archiver:
+  query: |
+    WITH
+      current_wal_file AS (
+         SELECT CASE WHEN NOT pg_is_in_recovery() THEN pg_walfile_name(pg_current_wal_insert_lsn()) ELSE NULL END pg_xlogfile_name
+      ),
+      current_wal AS (
+        SELECT
+          ('x'||substring(pg_xlogfile_name,9,8))::bit(32)::int log,
+          ('x'||substring(pg_xlogfile_name,17,8))::bit(32)::int seg,
+          pg_xlogfile_name
+        FROM current_wal_file
+      ),
+      archive_wal AS(
+        SELECT
+          ('x'||substring(last_archived_wal,9,8))::bit(32)::int log,
+          ('x'||substring(last_archived_wal,17,8))::bit(32)::int seg,
+          last_archived_wal
+        FROM pg_stat_archiver
+      )
+    SELECT coalesce(((cw.log - aw.log) * 256) + (cw.seg-aw.seg),'NaN'::float) as pending_wal_count FROM current_wal cw, archive_wal aw
+  metrics:
+    - pending_wal_count:
+        usage: "GAUGE"
+        description: "No. of pending WAL files to be archived"
+
+pg_replication_slots:
+  query: |
+    SELECT slot_name, slot_type,
+      case when active then 1.0 else 0.0 end AS active,
+      age(xmin) AS xmin_age,
+      CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END - restart_lsn AS restart_lsn_bytes
+    FROM pg_replication_slots
+  metrics:
+    - slot_name:
+        usage: "LABEL"
+        description: "Slot Name"
+    - slot_type:
+        usage: "LABEL"
+        description: "Slot Type"
+    - active:
+        usage: "GAUGE"
+        description: "Boolean flag indicating whether this slot has a consumer streaming from it"
+    - xmin_age:
+        usage: "GAUGE"
+        description: "Age of oldest transaction that cannot be vacuumed due to this replica"
+    - restart_lsn_bytes:
+        usage: "GAUGE"
+        description: "Bytes in replication slot"

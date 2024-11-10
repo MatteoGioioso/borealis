@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package borealis.v1beta1;
+
+option go_package = "/proto";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+service Info {
+  rpc GetClusters(GetClustersRequest) returns (GetClustersResponse) {
+    option (google.api.http) = {
+      post: "/v0/info/GetClusters"
+      body: "*"
+    };
+  };
+
+  rpc GetClusterInstances(GetClusterInstancesRequest) returns (GetClusterInstancesResponse) {
+    option (google.api.http) = {
+      post: "/v0/info/GetClusterInstances"
+      body: "*"
+    };
+  };
+
+  rpc GetDatabases(GetDatabasesRequest) returns (GetDatabasesResponse) {
+    option (google.api.http) = {
+      post: "/v0/info/GetDatabases"
+      body: "*"
+    };
+  };
+}
+
+message GetClustersRequest {}
+
+message GetClustersResponse {
+  repeated Cluster clusters = 1;
+}
+
+message GetClusterInstancesRequest {
+  string cluster_name = 1;
+}
+
+message GetClusterInstancesResponse {
+  repeated Instance instances = 1;
+}
+
+message GetDatabasesRequest {
+  string cluster_name = 1;
+}
+
+message GetDatabasesResponse {
+  repeated Database databases = 1;
+}
+
+message Cluster {
+  string id = 2;
+  string name = 1;
+  string hostname = 3;
+  string port = 4;
+  string status = 5;
+  string status_error = 6;
+}
+
+message Instance {
+  string id = 2;
+  string name = 1;
+  string hostname = 3;
+  string port = 4;
+  string status = 5;
+  string status_error = 6;
+}
+
+message Database {
+  string name = 1;
+}

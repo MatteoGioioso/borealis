@@ -1,0 +1,1 @@
+ALTER INDEX my_index ATTACH PARTITION my_index_name

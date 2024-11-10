@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+exec 2>&1
+exec env $BOREALIS_DIR/exporter/postgres_exporter --config.file $POSTGRES_EXPORTER_CONFIG_FILE_PATH

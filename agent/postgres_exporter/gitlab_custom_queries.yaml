@@ -1,0 +1,706 @@
+#  https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/6345
+
+pg_replication:
+  query: "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::INT as lag, CASE WHEN pg_is_in_recovery() THEN 1 ELSE 0 END as is_replica"
+  metrics:
+    - lag:
+        usage: "GAUGE"
+        description: "Replication lag behind master in seconds"
+    - is_replica:
+        usage: "GAUGE"
+        description: "Indicates if this host is a slave"
+
+# Note that upstream_host and slot_name labels will cause broken time
+# series which can be worked around using "ignoring" but it seems
+# better to have these labels and have to work around them than to
+# lose the data?
+
+# Also in 9.6 and prior this view, like the pg_stat_statements view
+# below requires a hacky SECURITY DEFINER function to grant access to
+# the data inside as they filter out data for non-superuser even if
+# you've granted access explicitly.
+# Below statement must be executed to grant postgres-exporter user proper permissions
+
+# CREATE FUNCTION public.f_pg_stat_wal_receiver() RETURNS SETOF pg_stat_wal_receiver
+#     LANGUAGE sql SECURITY DEFINER
+#     AS $$select * from pg_catalog.pg_stat_wal_receiver$$;
+
+
+# ALTER FUNCTION public.f_pg_stat_wal_receiver() OWNER TO "gitlab-psql";
+
+# CREATE VIEW postgres_exporter.pg_stat_wal_receiver AS
+#  SELECT f_pg_stat_wal_receiver.pid,
+#     f_pg_stat_wal_receiver.status,
+#     f_pg_stat_wal_receiver.receive_start_lsn,
+#     f_pg_stat_wal_receiver.receive_start_tli,
+#     f_pg_stat_wal_receiver.received_lsn,
+#     f_pg_stat_wal_receiver.received_tli,
+#     f_pg_stat_wal_receiver.last_msg_send_time,
+#     f_pg_stat_wal_receiver.last_msg_receipt_time,
+#     f_pg_stat_wal_receiver.latest_end_lsn,
+#     f_pg_stat_wal_receiver.latest_end_time,
+#     f_pg_stat_wal_receiver.slot_name,
+#     f_pg_stat_wal_receiver.conninfo
+#    FROM public.f_pg_stat_wal_receiver() f_pg_stat_wal_receiver(pid, status, receive_start_lsn, receive_start_tli, received_lsn, received_tli, last_msg_send_time, last_msg_receipt_time, latest_end_lsn, latest_end_time, slot_name, conninfo);
+
+# GRANT SELECT ON TABLE postgres_exporter.pg_stat_wal_receiver TO postgres_exporter;
+
+pg_stat_wal_receiver:
+  query: |
+    SELECT case status when 'stopped' then 0 when 'starting' then 1 when 'streaming' then 2 when 'waiting' then 3 when 'restarting' then 4 when 'stopping' then 5 else -1 end as status,
+           (receive_start_lsn- '0/0') % (2^52)::bigint as receive_start_lsn,
+           receive_start_tli,
+           (received_lsn- '0/0') % (2^52)::bigint as received_lsn,
+           received_tli,
+           extract(epoch from last_msg_send_time) as last_msg_send_time,
+           extract(epoch from last_msg_receipt_time) as last_msg_receipt_time,
+           (latest_end_lsn - '0/0') % (2^52)::bigint as latest_end_lsn,
+           extract(epoch from latest_end_time) as latest_end_time,
+           substring(slot_name from 'repmgr_slot_([0-9]*)') as upstream_node,
+           trim(both '''' from substring(conninfo from 'host=([^ ]*)')) as upstream_host,
+           slot_name
+      FROM pg_stat_wal_receiver
+  metrics:
+    - status:
+        usage: "GAUGE"
+        description: "Activity status of the WAL receiver process (0=stopped 1=starting 2=streaming 3=waiting 4=restarting 5=stopping)"
+    - receive_start_lsn:
+        usage: "COUNTER"
+        description: "First transaction log position used when WAL receiver is started"
+    - receive_start_tli:
+        usage: "GAUGE"
+        description: "First timeline number used when WAL receiver is started"
+    - received_lsn:
+        usage: "COUNTER"
+        description: "Last transaction log position already received and flushed to disk, the initial value of this field being the first log position used when WAL receiver is started"
+    - received_tli:
+        usage: "GAUGE"
+        description: "Timeline number of last transaction log position received and flushed to disk, the initial value of this field being the timeline number of the first log position used when WAL receiver is started"
+    - last_msg_send_time:
+        usage: "COUNTER"
+        description: "Send time of last message received from origin WAL sender"
+    - last_msg_receipt_time:
+        usage: "COUNTER"
+        description: "Receipt time of last message received from origin WAL sender"
+    - latest_end_lsn:
+        usage: "COUNTER"
+        description: "Last transaction log position reported to origin WAL sender"
+    - latest_end_time:
+        usage: "COUNTER"
+        description: "Time of last transaction log position reported to origin WAL sender"
+    - upstream_node:
+        usage: "GAUGE"
+        description: "The repmgr node from the upstream slot name"
+    - upstream_host:
+        usage: "LABEL"
+        description: "The upstream host this node is replicating from"
+    - slot_name:
+        usage: "LABEL"
+        description: "The upstream slot_name this node is replicating from"
+
+pg_archiver:
+  query: |
+    WITH
+      current_wal_file AS (
+         SELECT CASE WHEN NOT pg_is_in_recovery() THEN pg_xlogfile_name(pg_current_xlog_insert_location()) ELSE NULL END pg_xlogfile_name
+      ),
+      current_wal AS (
+        SELECT
+          ('x'||substring(pg_xlogfile_name,9,8))::bit(32)::int log,
+          ('x'||substring(pg_xlogfile_name,17,8))::bit(32)::int seg,
+          pg_xlogfile_name
+        FROM current_wal_file
+      ),
+      archive_wal AS(
+        SELECT
+          ('x'||substring(last_archived_wal,9,8))::bit(32)::int log,
+          ('x'||substring(last_archived_wal,17,8))::bit(32)::int seg,
+          last_archived_wal
+        FROM pg_stat_archiver
+      )
+    SELECT coalesce(((cw.log - aw.log) * 256) + (cw.seg-aw.seg),'NaN'::float) as pending_wal_count FROM current_wal cw, archive_wal aw
+  metrics:
+    - pending_wal_count:
+        usage: "GAUGE"
+        description: "No. of pending WAL files to be archived"
+
+pg_postmaster:
+  query: "SELECT pg_postmaster_start_time as start_time_seconds from pg_postmaster_start_time()"
+  metrics:
+    - start_time_seconds:
+        usage: "GAUGE"
+        description: "Time at which postmaster started"
+
+pg_stat_user_tables:
+  query: |
+    SELECT
+      current_database() datname,
+      schemaname,
+      relname,
+      seq_scan,
+      seq_tup_read,
+      idx_scan,
+      idx_tup_fetch,
+      n_tup_ins,
+      n_tup_upd,
+      n_tup_del,
+      n_tup_hot_upd,
+      n_live_tup,
+      n_dead_tup,
+      GREATEST(last_autovacuum, last_vacuum, '1970-01-01Z') as last_vacuum,
+      GREATEST(last_autoanalyze, last_analyze, '1970-01-01Z') as last_analyze,
+      (vacuum_count + autovacuum_count) as vacuum_count,
+      (analyze_count + autoanalyze_count) as analyze_count
+    FROM
+      pg_stat_user_tables
+  metrics:
+    - datname:
+        usage: "LABEL"
+        description: "Name of current database"
+    - schemaname:
+        usage: "LABEL"
+        description: "Name of the schema that this table is in"
+    - relname:
+        usage: "LABEL"
+        description: "Name of this table"
+    - seq_scan:
+        usage: "COUNTER"
+        description: "Number of sequential scans initiated on this table"
+    - seq_tup_read:
+        usage: "COUNTER"
+        description: "Number of live rows fetched by sequential scans"
+    - idx_scan:
+        usage: "COUNTER"
+        description: "Number of index scans initiated on this table"
+    - idx_tup_fetch:
+        usage: "COUNTER"
+        description: "Number of live rows fetched by index scans"
+    - n_tup_ins:
+        usage: "COUNTER"
+        description: "Number of rows inserted"
+    - n_tup_upd:
+        usage: "COUNTER"
+        description: "Number of rows updated"
+    - n_tup_del:
+        usage: "COUNTER"
+        description: "Number of rows deleted"
+    - n_tup_hot_upd:
+        usage: "COUNTER"
+        description: "Number of rows HOT updated (i.e., with no separate index update required)"
+    - n_live_tup:
+        usage: "GAUGE"
+        description: "Estimated number of live rows"
+    - n_dead_tup:
+        usage: "GAUGE"
+        description: "Estimated number of dead rows"
+    - last_vacuum:
+        usage: "GAUGE"
+        description: "Last time at which this table was vacuumed (not counting VACUUM FULL)"
+    - last_analyze:
+        usage: "GAUGE"
+        description: "Last time at which this table was analyzed"
+    - vacuum_count:
+        usage: "COUNTER"
+        description: "Number of times this table has been vacuumed"
+    - analyze_count:
+        usage: "COUNTER"
+        description: "Number of times this table has been analyzed"
+
+pg_statio_user_tables:
+  query: "SELECT schemaname, relname, heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit, toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit FROM pg_statio_user_tables"
+  metrics:
+    - schemaname:
+        usage: "LABEL"
+        description: "Name of the schema that this table is in"
+    - relname:
+        usage: "LABEL"
+        description: "Name of this table"
+    - heap_blks_read:
+        usage: "COUNTER"
+        description: "Number of disk blocks read from this table"
+    - heap_blks_hit:
+        usage: "COUNTER"
+        description: "Number of buffer hits in this table"
+    - idx_blks_read:
+        usage: "COUNTER"
+        description: "Number of disk blocks read from all indexes on this table"
+    - idx_blks_hit:
+        usage: "COUNTER"
+        description: "Number of buffer hits in all indexes on this table"
+    - toast_blks_read:
+        usage: "COUNTER"
+        description: "Number of disk blocks read from this table's TOAST table (if any)"
+    - toast_blks_hit:
+        usage: "COUNTER"
+        description: "Number of buffer hits in this table's TOAST table (if any)"
+    - tidx_blks_read:
+        usage: "COUNTER"
+        description: "Number of disk blocks read from this table's TOAST table indexes (if any)"
+    - tidx_blks_hit:
+        usage: "COUNTER"
+        description: "Number of buffer hits in this table's TOAST table indexes (if any)"
+
+pg_stat_user_indexes:
+  query: "SELECT schemaname, relname, indexrelname, idx_scan, idx_tup_read, idx_tup_fetch FROM pg_stat_user_indexes"
+  metrics:
+    - schemaname:
+        usage: "LABEL"
+        description: "Name of the schema that this table is in"
+    - relname:
+        usage: "LABEL"
+        description: "Name of the table for this index"
+    - indexrelname:
+        usage: "LABEL"
+        description: "Name of this index"
+    - idx_scan:
+        usage: "COUNTER"
+        description: "Number of index scans initiated on this index"
+    - idx_tup_read:
+        usage: "COUNTER"
+        description: "Number of index entries returned by scans on this index"
+    - idx_tup_fetch:
+        usage: "COUNTER"
+        description: "Number of live table rows fetched by simple index scans using this index"
+
+pg_statio_user_indexes:
+  query: "SELECT schemaname, relname, indexrelname, idx_blks_read, idx_blks_hit FROM pg_statio_user_indexes"
+  metrics:
+    - schemaname:
+        usage: "LABEL"
+        description: "Name of the schema that this table is in"
+    - relname:
+        usage: "LABEL"
+        description: "Name of the table for this index"
+    - indexrelname:
+        usage: "LABEL"
+        description: "Name of this index"
+    - idx_blks_read:
+        usage: "COUNTER"
+        description: "Number of disk blocks read from this index"
+    - idx_blks_hit:
+        usage: "COUNTER"
+        description: "Number of buffer hits in this index"
+
+pg_stat_statements:
+  query: |
+    SELECT
+      pg_get_userbyid(userid) as user,
+      pg_database.datname,
+      pg_stat_statements.queryid,
+      pg_stat_statements.calls,
+      pg_stat_statements.total_time / 1000.0 as seconds_total,
+      pg_stat_statements.rows,
+      pg_stat_statements.blk_read_time / 1000.0 as block_read_seconds_total,
+      pg_stat_statements.blk_write_time / 1000.0 as block_write_seconds_total
+      FROM pg_stat_statements
+      JOIN pg_database
+        ON pg_database.oid = pg_stat_statements.dbid
+      WHERE
+        total_time > (
+          SELECT percentile_cont(0.1)
+            WITHIN GROUP (ORDER BY total_time)
+            FROM pg_stat_statements
+        )
+      ORDER BY seconds_total DESC
+      LIMIT 500
+  metrics:
+    - user:
+        usage: "LABEL"
+        description: "The user who executed the statement"
+    - datname:
+        usage: "LABEL"
+        description: "The database in which the statement was executed"
+    - queryid:
+        usage: "LABEL"
+        description: "Internal hash code, computed from the statement's parse tree"
+    - calls:
+        usage: "COUNTER"
+        description: "Number of times executed"
+    - seconds_total:
+        usage: "COUNTER"
+        description: "Total time spent in the statement, in seconds"
+    - rows:
+        usage: "COUNTER"
+        description: "Total number of rows retrieved or affected by the statement"
+    - block_read_seconds_total:
+        usage: "COUNTER"
+        description: "Total time the statement spent reading blocks, in seconds"
+    - block_write_seconds_total:
+        usage: "COUNTER"
+        description: "Total time the statement spent writing blocks, in seconds"
+
+pg_total_relation_size:
+  query: |
+    SELECT relnamespace::regnamespace as schemaname,
+           relname as relname,
+           pg_total_relation_size(oid) bytes
+      FROM pg_class
+     WHERE relkind = 'r';
+  metrics:
+    - schemaname:
+        usage: "LABEL"
+        description: "Name of the schema that this table is in"
+    - relname:
+        usage: "LABEL"
+        description: "Name of this table"
+    - bytes:
+        usage: "GAUGE"
+        description: "total disk space usage for the specified table and associated indexes"
+
+pg_blocked:
+  query: |
+    SELECT
+      count(blocked.transactionid) AS queries,
+      '__transaction__' AS table
+    FROM pg_catalog.pg_locks blocked
+    WHERE NOT blocked.granted AND locktype = 'transactionid'
+    GROUP BY locktype
+    UNION
+    SELECT
+      count(blocked.relation) AS queries,
+      blocked.relation::regclass::text AS table
+    FROM pg_catalog.pg_locks blocked
+    WHERE NOT blocked.granted AND locktype != 'transactionid'
+    GROUP BY relation
+  metrics:
+    - queries:
+        usage: "GAUGE"
+        description: "The current number of blocked queries"
+    - table:
+        usage: "LABEL"
+        description: "The table on which a query is blocked"
+
+pg_oldest_blocked:
+  query: |
+    SELECT coalesce(extract('epoch' from max(clock_timestamp() - state_change)), 0) age_seconds
+      FROM pg_stat_activity
+     WHERE wait_event_type = 'Lock'
+       AND state='active'
+  metrics:
+    - age_seconds:
+        usage: "GAUGE"
+        description: "Largest number of seconds any transaction is currently waiting on a lock"
+
+pg_slow:
+  query: |
+    SELECT COUNT(*) AS queries
+    FROM pg_stat_activity
+    WHERE state = 'active' AND (now() - query_start) > '1 seconds'::interval
+  metrics:
+    - queries:
+        usage: "GAUGE"
+        description: "Current number of slow queries"
+
+pg_long_running_transactions:
+  query: |
+    SELECT COUNT(*) as transactions,
+    MAX(EXTRACT(EPOCH FROM (clock_timestamp() - xact_start))) AS age_in_seconds
+    FROM pg_stat_activity
+    WHERE state is distinct from 'idle' AND (now() - xact_start) > '1 minutes'::interval AND query not like 'autovacuum:%'
+  metrics:
+    - queries:
+        usage: "GAUGE"
+        description: "Current number of long running transactions"
+    - age_in_seconds:
+        usage: "GAUGE"
+        description: "The current maximum transaction age in seconds"
+
+pg_stuck_idle_in_transaction:
+  query: |
+    SELECT COUNT(*) AS queries
+    FROM pg_stat_activity
+    WHERE state = 'idle in transaction' AND (now() - query_start) > '10 minutes'::interval
+  metrics:
+    - queries:
+        usage: "GAUGE"
+        description: "Current number of queries that are stuck being idle in transactions"
+
+# All xid and lsn metrics here are reported mod 2^52 to ensure they
+# fit within a float for Prometheus :( Really annoying that counters
+# aren't stored in a 64-bit integer. Note that for queries that report
+# floats this only works because postgres_exporter does know to set
+# extra_float_digits (which it sets to 2). So they don't print in
+# exponential notation and precision is maintained up to 2^53-1.
+
+pg_txid:
+  query: |
+    SELECT
+      CASE WHEN pg_is_in_recovery() THEN 'NaN'::float ELSE txid_current() % (2^52)::bigint END AS current,
+      CASE WHEN pg_is_in_recovery() THEN 'NaN'::float ELSE txid_snapshot_xmin(txid_current_snapshot()) % (2^52)::bigint END AS xmin,
+      CASE WHEN pg_is_in_recovery() THEN 'NaN'::float ELSE txid_current() - txid_snapshot_xmin(txid_current_snapshot()) END AS xmin_age
+  metrics:
+    - current:
+        usage: "COUNTER"
+        description: "Current 64-bit transaction id of the query used to collect this metric (truncated to low 52 bits)"
+    - xmin:
+        usage: "COUNTER"
+        description: "Oldest transaction id of a transaction still in progress, i.e. not known committed or aborted (truncated to low 52 bits)"
+    - xmin_age:
+        usage: "GAUGE"
+        description: "Age of oldest transaction still not committed or aborted measured in transaction ids"
+
+pg_database_wraparound:
+  query: >
+    SELECT
+      datname,
+      age(d.datfrozenxid) as age_datfrozenxid,
+      mxid_age(d.datminmxid) as age_datminmxid
+    FROM
+      pg_catalog.pg_database d
+    WHERE
+      d.datallowconn
+  metrics:
+    - datname:
+        usage: "LABEL"
+        description: "Database Name"
+    - age_datfrozenxid:
+        usage: "GAUGE"
+        description: "Age of the oldest transaction ID that has not been frozen."
+    - age_datminmxid:
+        usage: "GAUGE"
+        description: "Age of the oldest multi-transaction ID that has been replaced with a transaction ID."
+
+pg_xlog_position:
+  query: |
+    SELECT CASE
+           WHEN pg_is_in_recovery()
+           THEN (pg_last_xlog_replay_location() - '0/0') % (2^52)::bigint
+           ELSE (pg_current_xlog_location() - '0/0') % (2^52)::bigint
+           END AS bytes
+  metrics:
+    - bytes:
+        usage: "COUNTER"
+        description: "Postgres LSN (log sequence number) being generated on primary or replayed on replica (truncated to low 52 bits)"
+
+# This should be pushed upstream. We really just want "active" so we
+# can monitor for orphaned slots causing xlog space usage to grow
+
+pg_replication_slots:
+  query: |
+    SELECT slot_name, slot_type,
+      case when active then 1.0 else 0.0 end AS active,
+      age(xmin) AS xmin_age,
+      age(catalog_xmin) AS catalog_xmin_age,
+      CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END - restart_lsn AS restart_lsn_bytes,
+      CASE WHEN pg_is_in_recovery() THEN pg_last_wal_receive_lsn() ELSE pg_current_wal_lsn() END - confirmed_flush_lsn AS confirmed_flush_lsn_bytes
+    FROM pg_replication_slots;
+  metrics:
+    - slot_name:
+        usage: "LABEL"
+        description: "Slot Name"
+    - slot_type:
+        usage: "LABEL"
+        description: "Slot Type"
+    - active:
+        usage: "GAUGE"
+        description: "Boolean flag indicating whether this slot has a consumer streaming from it"
+    - xmin_age:
+        usage: "GAUGE"
+        description: "Age of oldest transaction that cannot be vacuumed due to this replica"
+    - catalog_xmin_age:
+        usage: "GAUGE"
+        description: "Age of oldest transaction that cannot be vacuumed from catalogs due to this replica (used by logical replication)"
+    - restart_lsn_bytes:
+        usage: "GAUGE"
+        description: "Amount of data in xlog that must be this replica may need to complete recovery"
+    - confirmed_flush_lsn_bytes:
+        usage: "GAUGE"
+        description: "Amount of data on in xlog that must be this replica has not yet received. is the latest position in the WAL for which the consumer has already received decoded data"
+
+pg_stat_ssl:
+  query: |
+    SELECT pid, bits,
+           CASE WHEN ssl THEN 1.0 ELSE 0.0 END AS active,
+           CASE WHEN compression THEN 1.0 ELSE 0.0 END AS compression
+           FROM pg_stat_ssl
+  metrics:
+    - pid:
+        usage: "LABEL"
+        description: "Process ID of a backend or WAL sender process"
+    - active:
+        usage: "GAUGE"
+        description: "Boolean flag indicating if SSL is used on this connection"
+    - bits:
+        usage: "GAUGE"
+        description: "Number of bits in the encryption algorithm is in use"
+    - compression:
+        usage: "GAUGE"
+        description: "Boolean flag indicating if SSL compression is in use"
+
+# This tracks the remaining integer capacity for primary keys of selected tables
+# This is specific to GitLab.com and a temporary measure until those primary keys
+# have been migrated to int8 data type.
+# See https://gitlab.com/groups/gitlab-org/-/epics/4785
+#
+pg_integer_capacity:
+  query: >
+    SELECT 'events' as table_name, 'id' as column_name, max(id) as current, (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('events', 'id')) as maximum FROM events
+      UNION ALL
+    SELECT 'ci_job_artifacts', 'id', max(id), (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('ci_job_artifacts', 'id')) FROM ci_job_artifacts
+      UNION ALL
+    SELECT 'ci_builds', 'id', max(id), (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('ci_builds', 'id')) FROM ci_builds
+      UNION ALL
+    SELECT 'ci_builds_metadata', 'id', max(id), (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('ci_builds_metadata', 'id')) FROM ci_builds_metadata
+      UNION ALL
+    SELECT 'web_hook_logs', 'id', max(id), (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('web_hook_logs', 'id')) FROM web_hook_logs
+      UNION ALL
+    SELECT 'sent_notifications', 'id', max(id), (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('sent_notifications', 'id')) FROM sent_notifications
+      UNION ALL
+    SELECT 'taggings', 'id', max(id), (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('taggings', 'id')) FROM taggings
+      UNION ALL
+    SELECT 'notes', 'id', max(id), (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('notes', 'id')) FROM notes
+      UNION ALL
+    SELECT 'ci_stages', 'id', max(id), (select (2^(numeric_precision-1)-1) FROM information_schema.columns WHERE (table_name, column_name) = ('ci_stages', 'id')) FROM ci_stages
+  metrics:
+    - table_name:
+        usage: LABEL
+        description: Name of the table
+    - column_name:
+        usage: LABEL
+        description: Name of the column
+    - current:
+        usage: GAUGE
+        description: Current maximum value for this column
+    - maximum:
+        usage: GAUGE
+        description: Maximum value this column based on its data type
+
+#
+# This query extracts marginalia comments from pg_stat_activity and provides a sampled summary of the type of
+# endpoints that are actively making calls
+#
+pg_stat_activity_marginalia_sampler:
+  query: >
+    SELECT
+      usename AS usename,
+      a.matches[1] AS application,
+      a.matches[2] AS endpoint,
+      a.matches[3] AS command,
+      a.wait_event AS wait_event,
+      a.state AS state,
+      a.wait_event_type AS wait_event_type,
+      COUNT(*) active_count,
+      MAX(age_in_seconds) AS max_tx_age_in_seconds
+    FROM (
+      SELECT
+        usename,
+        regexp_matches(query, '^\s*(?:\/\*(?:application:(\w+),?)?(?:correlation_id:\w+,?)?(?:jid:\w+,?)?(?:endpoint_id:([\w/\-\.:\#\s]+),?)?\*\/)?\s*(\w+)') AS matches,
+        state,
+        wait_event,
+        wait_event_type,
+        EXTRACT(EPOCH FROM (clock_timestamp() - xact_start)) AS age_in_seconds
+      FROM
+        pg_stat_activity
+      ) a
+    GROUP BY usename, application, endpoint, command, state, wait_event, wait_event_type
+    ORDER BY active_count DESC
+  metrics:
+    - usename:
+        usage: LABEL
+        description: The user running the command
+    - application:
+        usage: LABEL
+        description: Name of the application as presented in marginalia comment
+    - endpoint:
+        usage: LABEL
+        description: Name of the web endpoint or sidekiq job as presented in marginalia comment
+    - command:
+        usage: LABEL
+        description: The first word for the running command
+    - wait_event:
+        usage: LABEL
+        description: Wait event  of the activity as presented by pg_stat_activity.wait_event
+    - state:
+        usage: LABEL
+        description: State of the activity as presented by pg_stat_activity.state
+    - wait_event_type:
+        usage: LABEL
+        description: Wait event type of the activity as presented by pg_stat_activity.wait_event_type
+    - active_count:
+        usage: GAUGE
+        description: Number of active queries at time of sample
+    - max_tx_age_in_seconds:
+        usage: GAUGE
+        description: Number of active queries at time of sample
+
+# This records long running autovacuum processes
+# The reason we limit to long-running processes is to avoid
+# cardinality problems in prometheus
+# Since we're only concerned about long running processes
+# we limit the output only to those
+pg_stat_activity_autovacuum:
+  query: >
+    SELECT
+      SPLIT_PART(query, '.', 2) AS relname,
+      EXTRACT(EPOCH FROM (clock_timestamp() - xact_start)) AS age_in_seconds
+    FROM
+      pg_stat_activity
+    WHERE
+      query like 'autovacuum:%'
+    AND
+      EXTRACT(EPOCH FROM (clock_timestamp() - xact_start)) > 1200
+  metrics:
+    - relname:
+        usage: LABEL
+        description: The table being vacuumed
+    - age_in_seconds:
+        usage: GAUGE
+        description: The age of the vacuum process in seconds
+
+# Keep track of the number of the total number of autovacuum workers
+# currently active
+pg_stat_activity_autovacuum_active:
+  query: >
+    SELECT v.phase,
+           CASE
+             when a.query ~ '^autovacuum.*to prevent wraparound' then 'wraparound'
+             when a.query ~* '^vacuum' then 'user'
+             when a.pid is null then null
+             ELSE 'regular'
+           END as mode,
+           count(1) as workers_count
+      FROM pg_stat_progress_vacuum v
+      LEFT JOIN pg_stat_activity a using (pid)
+     GROUP BY 1,2
+  metrics:
+    - phase:
+        usage: LABEL
+        description: Vacuum phase
+    - mode:
+        usage: LABEL
+        description: Vacuum mode
+    - workers_count:
+        usage: GAUGE
+        description: The number of active autovacuum workers in this state
+
+#
+# This query extracts marginalia metadata from pg_stat_activity and provides a sampled summary about the long running transactions.
+#
+pg_long_running_transactions_marginalia:
+  query: >
+    SELECT
+      activity.matches[1] AS application,
+      activity.matches[2] AS endpoint,
+      MAX(age_in_seconds) AS max_age_in_seconds
+    FROM (
+      SELECT
+        regexp_matches(query, '^\s*(?:\/\*(?:application:(\w+),?)?(?:correlation_id:\w+,?)?(?:jid:\w+,?)?(?:endpoint_id:([\w/\-\.:\#\s]+),?)?\*\/)?\s*(\w+)') AS matches,
+        EXTRACT(EPOCH FROM (clock_timestamp() - xact_start)) AS age_in_seconds
+      FROM
+        pg_stat_activity
+      WHERE state <> 'idle'
+        AND (clock_timestamp() - xact_start) > '30 seconds'::interval
+        AND query NOT LIKE 'autovacuum:%'
+      ) activity
+    GROUP BY application, endpoint
+    ORDER BY max_age_in_seconds DESC
+  metrics:
+    - application:
+        usage: LABEL
+        description: Name of the application as presented in marginalia comment
+    - endpoint:
+        usage: LABEL
+        description: Name of the web endpoint or sidekiq job as presented in marginalia comment
+    - max_age_in_seconds:
+        usage: GAUGE
+        description: The current maximum transaction age in seconds

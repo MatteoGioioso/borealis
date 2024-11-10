@@ -1,0 +1,15 @@
+logLevel: info
+backup:
+  enabled: true
+  imageName: chrislusf/seaweedfs
+  imageVersion: latest
+  port: 8333
+  endpoint: borealis-backup-service
+storage: # Storage you want to provision for the borealis infrastructures
+  enabled: true # If disabled, you can create your own custom PersistentVolumeClaim, but you MUST specify the name of your claim
+  size: 10Gi
+  storageClassName: standard
+  name: borealis-infrastructures-storage
+postgres-operator:
+  configKubernetes:
+    pod_environment_configmap: default/postgres-pod-config

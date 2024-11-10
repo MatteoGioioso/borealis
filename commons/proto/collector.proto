@@ -1,0 +1,215 @@
+syntax = "proto3";
+
+package borealis.v1beta1;
+
+option go_package = "/proto";
+
+// Collector service accepts data from postgres-agent
+service StatementsCollector {
+  // Collect accepts data from postgres-agent
+  rpc Collect(StatementsCollectRequest) returns (StatementsCollectResponse);
+}
+
+message StatementsCollectRequest {
+  repeated MetricsBucket metrics_bucket = 1;
+}
+
+// MetricsBucket is aggregated message created by postgres-agent.
+// Contains information about one query selected in defined way from query class in specific period of time.
+message MetricsBucket {
+  string cluster_name = 3;
+  string instance_name = 253;
+  string database = 4;
+  string schema = 5;
+  repeated string tables = 166;
+  string application_name = 248;
+  string username = 6;
+  string client_host = 7;
+  string environment = 161;
+
+  string fingerprint = 2;
+  string queryid = 1;
+  string query = 16;
+  bool is_query_truncated = 251;
+
+  string replication_set = 158;
+  string agent_id = 9;
+  map<string, string> labels = 8;
+
+  // Time when collection of bucket started.
+  uint32 period_start_unix_secs = 10;
+  // Duration of bucket.
+  uint32 period_length_secs = 11;
+  // Indicates if the query example is truncated.
+  bool is_truncated = 15;
+
+  // Metrics.
+
+  // How many queries was with warnings in bucket.
+  float num_queries_with_warnings = 18;
+  // List of warnings: {code: count}.
+  map<uint64, uint64> warnings = 19;
+  // How many queries was with error in bucket.
+  float num_queries_with_errors = 20;
+  // List of errors: {code: count}.
+  map<uint64, uint64> errors = 21;
+  // Amount queries in this bucket.
+  float num_queries = 22;
+
+  float m_query_time_cnt = 23;
+  float m_query_time_sum = 24;
+  float m_query_time_min = 25;
+  float m_query_time_max = 26;
+  float m_query_time_p99 = 27;
+
+  float m_rows_sent_cnt = 33;
+  float m_rows_sent_sum = 34;
+  float m_rows_sent_min = 35;
+  float m_rows_sent_max = 36;
+  float m_rows_sent_p99 = 37;
+
+  float m_shared_blks_hit_cnt = 200;
+  float m_shared_blks_hit_sum = 201;
+  float m_shared_blks_read_cnt = 202;
+  float m_shared_blks_read_sum = 203;
+  float m_shared_blks_dirtied_cnt = 204;
+  float m_shared_blks_dirtied_sum = 205;
+  float m_shared_blks_written_cnt = 206;
+  float m_shared_blks_written_sum = 207;
+
+  float m_local_blks_hit_cnt = 208;
+  float m_local_blks_hit_sum = 209;
+  float m_local_blks_read_cnt = 210;
+  float m_local_blks_read_sum = 211;
+  float m_local_blks_dirtied_cnt = 212;
+  float m_local_blks_dirtied_sum = 213;
+  float m_local_blks_written_cnt = 214;
+  float m_local_blks_written_sum = 215;
+
+  float m_temp_blks_read_cnt = 216;
+  float m_temp_blks_read_sum = 217;
+  float m_temp_blks_written_cnt = 218;
+  float m_temp_blks_written_sum = 219;
+
+  float m_blk_read_time_cnt = 220;
+  float m_blk_read_time_sum = 221;
+  float m_blk_write_time_cnt = 222;
+  float m_blk_write_time_sum = 223;
+
+  float m_cpu_user_time_cnt = 230;
+  float m_cpu_user_time_sum = 231;
+  float m_cpu_sys_time_cnt = 232;
+  float m_cpu_sys_time_sum = 233;
+  string cmd_type = 246;
+
+  string top_queryid = 247;
+  string top_query = 250;
+}
+
+// Collector service accepts data from postgres-agent
+service ActivityCollector {
+  // Collect accepts data from postgres-agent
+  rpc Collect(ActivityCollectRequest) returns (ActivityCollectResponse);
+}
+
+message ActivityCollectRequest {
+  repeated ActivitySample activity_samples = 1;
+}
+
+message ActivityCollectResponse {}
+
+message ActivitySamples {
+  repeated ActivitySample activity_samples = 1;
+}
+
+message ActivitySample {
+  string cluster_name = 18;
+  string instance_name = 19;
+  string instance_host = 24;
+  string datname = 1;
+  string application_name = 5;
+  string backend_type = 6;
+  string client_hostname = 7;
+  string usesysid = 3;
+  string usename = 4;
+  uint32 pid = 2;
+  string collector_host = 23;
+
+  string fingerprint = 25;
+  string query_id = 21;
+  string query_sha = 27;
+  string parsed_query = 10;
+  string query = 11;
+  bool is_query_truncated = 26;
+  bool is_not_explainable = 28;
+
+  string wait_event_type = 8;
+  string wait_event = 9;
+  string state = 12;
+
+  uint32 query_start = 13;
+  float duration = 14;
+  uint32 current_timestamp = 15;
+  // Time when collection of bucket started.
+  uint32 period_start_unix_secs = 16;
+  // Duration of bucket.
+  uint32 period_length_secs = 17;
+
+  float cpu_cores = 22;
+}
+
+message StatementsCollectResponse {}
+
+service LogsCollector {
+  rpc Collect(LogsCollectRequest) returns (LogsCollectResponse);
+}
+
+message LogsCollectRequest {
+  repeated ParsedLogLine parsed_log_lines = 1;
+}
+
+message ParsedLogLine {
+  uint32 log_time = 1;
+  string user_name = 2;
+  string database_name = 3;
+  uint32  process_id = 4;
+  string connection_from = 5;
+  string session_id = 6;
+  int32  session_line_num = 7;
+  string command_tag = 8;
+  uint32 session_start_time = 9;
+  string virtual_transaction_id = 10;
+  int32  transaction_id = 11;
+  string error_severity = 12;
+  string sql_state_code = 13;
+  string message = 14;
+  string detail = 15;
+  string hint = 16;
+  string internal_query = 17;
+  int32 internal_query_pos = 18;
+  string context = 19;
+  string query = 20;
+  int32 query_pos = 21;
+  string location = 22;
+  string application_name = 23;
+  string backend_type = 24;
+  string leader_pid = 25;
+  string query_id = 26;
+  string cluster_name = 27;
+  string instance_name = 28;
+}
+
+message LogsCollectResponse {}
+
+service Collector {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+}
+
+message RegisterRequest {
+  string cluster_name = 1;
+  string instance_name = 2;
+  string instance_host = 3;
+  string collector_host = 4;
+}
+
+message RegisterResponse {}
