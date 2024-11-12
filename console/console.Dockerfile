@@ -1,4 +1,4 @@
-FROM ubuntu:20.04 AS base
+FROM ubuntu:22.04 AS base
 LABEL maintainer="Matteo Gioioso <matteo.gioioso@zalando.fi>"
 
 ARG USER
@@ -110,6 +110,7 @@ RUN apt-get autoremove --purge && apt-get clean && \
 
 # Fix permissions
 RUN chown -R $GID:$UID $BOREALIS_DIR
+RUN chown -R $GID:$UID /etc/service/
 RUN chmod +x -R $BOREALIS_DIR
 
 USER $USER

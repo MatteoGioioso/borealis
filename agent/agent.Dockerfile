@@ -1,4 +1,4 @@
-FROM ubuntu:20.04 AS base
+FROM ubuntu:22.04 AS base
 LABEL maintainer="Matteo Gioioso <matteo.gioioso@zalando.fi>"
 
 ARG USER
@@ -8,6 +8,8 @@ ARG GID=1001
 ARG BOREALIS_DIR=/borealis
 ARG VMAGENT_VERSION=v1.89.1
 ARG EXPORT_VERSION=0.15.0
+ARG LOKI_VERSION=3.2.1
+ARG PROMTAIL_VERSION=3.2.1
 
 ENV USER=$USER
 ENV GROUP=$GROUP
@@ -16,6 +18,8 @@ ENV GID=$GID
 ENV BOREALIS_DIR=$BOREALIS_DIR
 ENV VMAGENT_VERSION=$VMAGENT_VERSION
 ENV EXPORT_VERSION=$EXPORT_VERSION
+ENV LOKI_VERSION=$LOKI_VERSION
+ENV PROMTAIL_VERSION=$PROMTAIL_VERSION
 
 # Application variables
 ENV POSTGRES_EXPORTER_CONFIG_FILE_PATH=$BOREALIS_DIR/config/postgres_exporter.yml
@@ -23,7 +27,7 @@ ENV VMAGENT_CONFIG_FILE_PATH=$BOREALIS_DIR/config/vmagent.yml
 
 RUN DEBIAN_FRONTEND=noninteractive \
     && apt-get update && apt-get upgrade -y \
-    && apt-get install -y ca-certificates runit software-properties-common wget apt-transport-https dumb-init
+    && apt-get install -y ca-certificates runit software-properties-common wget apt-transport-https dumb-init libc6
 
 RUN addgroup $GROUP
 RUN adduser \
@@ -60,6 +64,9 @@ COPY $EXPORTER_DIR/custom_queries.yaml $BOREALIS_DIR/exporter/custom_queries.yam
 # Postgres agent
 COPY postgres_agent/bin/postgres_agent $BOREALIS_DIR/agent/postgres_agent
 
+# Loki
+RUN apt-get install -y loki=$LOKI_VERSION promtail=$PROMTAIL_VERSION
+
 # runit
 COPY scripts/launch.sh $BOREALIS_DIR/launch.sh
 COPY scripts/runit $BOREALIS_DIR/services/
@@ -73,6 +80,7 @@ RUN apt-get autoremove --purge && apt-get clean && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 RUN chown -R $GID:$UID $BOREALIS_DIR
+RUN chown -R $GID:$UID /etc/service/
 RUN chmod +x -R $BOREALIS_DIR
 
 USER $USER

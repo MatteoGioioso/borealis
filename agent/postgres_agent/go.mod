@@ -1,8 +1,6 @@
 module github.com/borealis/postgres_agent
 
-go 1.22.0
-
-toolchain go1.22.3
+go 1.23.2
 
 replace github.com/borealis/commons => ../../commons
 

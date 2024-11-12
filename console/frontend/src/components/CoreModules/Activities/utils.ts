@@ -26,6 +26,7 @@ export const metricsInfoMap = {
     blk_write_time: {key: "blk_write_time", type: "sum", unit: "ms", title: "Blocks write time"}
 }
 
+// @ts-ignore
 export const getMetricsKeys = (excludedColumns?: string[]) => Object.keys(metricsInfoMap).filter(k => !excludedColumns?.includes(k)).map(k => k)
 
 export const getMetricsColumns = (tableData: TopQueriesTableData): { val: string, key: string }[] => {

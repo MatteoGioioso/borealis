@@ -15,35 +15,40 @@ import (
 	pg2 "github.com/borealis/postgres_agent/pg"
 	"github.com/borealis/postgres_agent/pgstatactivity"
 	"github.com/borealis/postgres_agent/pgstatstatements"
+	"github.com/borealis/postgres_agent/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/alecthomas/kingpin.v2"
-
-	"github.com/borealis/postgres_agent/utils"
 	"sync"
 )
 
 var (
 	configFilepath = kingpin.Flag("config-filepath", "").
-			Envar("CONFIG_FILEPATH").
-			Default("/config/config.yaml").
-			String()
+		Envar("CONFIG_FILEPATH").
+		Default("/config/config.yaml").
+		String()
 
 	logLevelRaw = kingpin.Flag("log-level", "").
-			Envar("LOG_LEVEL").
-			Default("info").
-			Enum("debug", "info", "warning")
+		Envar("LOG_LEVEL").
+		Default("info").
+		Enum("debug", "info", "warning")
 
 	// TODO Might not be needed
 	collectorHost = kingpin.Flag("collector-host", "").
-			Envar("COLLECTOR_HOST").
-			Default("localhost:8083").
-			String()
+		Envar("COLLECTOR_HOST").
+		Default("localhost:8083").
+		String()
 
 	grpcServerPort = kingpin.Flag("grpc-server-port", "").
-			Envar("GRPC_SERVER_PORT").
-			Default("8083").
-			String()
+		Envar("GRPC_SERVER_PORT").
+		Default("8083").
+		String()
+
+	// Via env variables
+	instances = kingpin.Flag("instance_names", "comma separated list").
+		Envar("INSTANCE_NAMES").
+		Required().
+		String()
 )
 
 func ParseFlags() {
@@ -52,7 +57,7 @@ func ParseFlags() {
 
 func main() {
 	ParseFlags()
-	log := logger.NewDefaultLogger(*logLevelRaw, "collector")
+	log := logger.NewDefaultLogger(*logLevelRaw, "agent")
 	log.Info("starting")
 
 	grpcAddress := ":" + (*grpcServerPort)
@@ -65,7 +70,7 @@ func main() {
 
 	ctx := utils.GetContext(log)
 
-	conf, err := config.New(*configFilepath, "")
+	conf, err := config.New(*configFilepath, *instances)
 	if err != nil {
 		log.Fatalln(err)
 	}

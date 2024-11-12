@@ -1,5 +1,30 @@
 #!/usr/bin/env sh
 
+if [ "$AGENT_DISABLED" = "1" ]; then
+  echo "agent disabled"
+  rm /etc/service/agent
+fi
+
+if [ "$EXPORTER_DISABLED" = "1" ]; then
+echo "exporter disabled"
+  rm /etc/service/exporter
+fi
+
+if [ "$VMAGENT_DISABLED" = "1" ]; then
+echo "vmagent disabled"
+  rm /etc/service/vmagent
+fi
+
+if [ "$LOKI_DISABLED" = "1" ]; then
+echo "loki disabled"
+  rm /etc/service/loki
+fi
+
+if [ "$PROMTAIL_DISABLED" = "1" ]; then
+echo "promtail disabled"
+  rm /etc/service/promtail
+fi
+
 $BOREALIS_DIR/config/generate-config &&
 
 sv_stop() {

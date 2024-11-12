@@ -25,6 +25,10 @@ type Instance struct {
 	// Internals
 	ExporterHostname string
 	ExporterPort     string
+	LokiHost         string `yaml:"lokiHost"`
+	LokiPort         string `yaml:"lokiPort"`
+	PromtailHost     string `yaml:"promtailHost"`
+	PromtailPort     string `yaml:"promtailPort"`
 }
 
 type Config struct {
@@ -46,6 +50,8 @@ func New(configFilepath string, instanceNames string) (*Config, error) {
 
 	if fromEnv, err := conf.fromEnv(instanceNames); err == nil {
 		return fromEnv, nil
+	} else {
+		log.Printf("error loading config from envvariables: %v, trying config file", err)
 	}
 
 	return conf.fromFile(configFilepath)
@@ -132,6 +138,14 @@ func (c *Config) validate() error {
 
 		if instance.ExporterPort == "" {
 			c.Instances[i].ExporterPort = "9187"
+		}
+
+		if instance.LokiHost == "" {
+			instance.LokiHost = "localhost"
+		}
+
+		if instance.LokiPort == "" {
+			instance.LokiPort = "3100"
 		}
 	}
 

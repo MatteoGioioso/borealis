@@ -10,6 +10,8 @@ storage: # Storage you want to provision for the borealis infrastructures
   size: 10Gi
   storageClassName: standard
   name: borealis-infrastructures-storage
+logs:
+
 postgres-operator:
   configKubernetes:
     pod_environment_configmap: default/postgres-pod-config

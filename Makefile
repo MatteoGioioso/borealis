@@ -5,23 +5,10 @@ FRONTEND_DIR = console/frontend/src/components/SelfHosted/proto
 PACKAGE = $(cd proto/ && shell head -1 go.mod | awk '{print $$2}')
 GO = $(HOME)/go/bin/go1.18.10
 BUILDKIT_PROGRESS=plain
+export DOCKER_HOST=ssh://madeo@homelab
 
-
-gen.types:
-	cd core && make generate-types
-
-reload.core: build.backend.core
-	docker-compose up --build --remove-orphans backend -d
-
-reload.enterprise: build.backend.enterprise
-	docker-compose up --build --remove-orphans backend -d
-
-reload.collector: build.collector
-	docker-compose up --build --remove-orphans collector -d
-
-
-tunnel:
-	zkubectl port-forward -n phoenix loungephoenix-campaign-data-aggregator-db-0 5432:5432
+reload.agent: build.agent
+	docker-compose up --build --remove-orphans agent -d
 
 gen.sanitize:
 	curl -o backend/shared/sanitize.go https://raw.githubusercontent.com/jackc/pgx/master/internal/sanitize/sanitize.go
@@ -37,7 +24,7 @@ gen.proto:
 		--grpc-gateway-ts_out=loglevel=debug,use_proto_names=true:${FRONTEND_DIR} \
 		--proto_path=${PROTO_DIR} ${PROTO_DIR}/info.proto ${PROTO_DIR}/analytics.proto ${PROTO_DIR}/activities.proto ${PROTO_DIR}/shared.proto
 
-build.collector:
+build.agent:
 	(cd agent/postgres_agent/ && go mod tidy -modfile=$(GOMODFILE) && GOOS=linux GOARCH=amd64 go build -modfile=$(GOMODFILE) -o bin/postgres_agent .)
 	(cd agent/config && go mod tidy -modfile=$(GOMODFILE) && GOOS=linux GOARCH=amd64 go build -modfile=$(GOMODFILE) -o bin/generate-config .)
 
@@ -53,13 +40,13 @@ build.console: build.frontend build.backend
 run.frontend:
 	(cd console/frontend && REACT_APP_MODE=self_hosted REACT_APP_BACKEND_ORIGIN=http://localhost:8082 npm run start)
 
-run.headless: build.backend build.collector
+run.headless: build.backend build.agent
 	docker-compose up --build --remove-orphans
 
 run:
 	docker-compose up --build --remove-orphans
 
-build_and_run: build.console build.collector run
+build_and_run: build.console build.agent run
 
 down:
 	docker-compose down --remove-orphans

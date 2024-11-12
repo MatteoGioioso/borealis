@@ -52,8 +52,8 @@ var (
 			Enum("autogenerate", "custom", "noop")
 
 	// Via env variables
-	clusters = kingpin.Flag("cluster_names", "comma separated list").
-			Envar("CLUSTER_NAMES").
+	instances = kingpin.Flag("instance_names", "comma separated list").
+			Envar("INSTANCE_NAMES").
 			Required().
 			String()
 )
@@ -61,9 +61,9 @@ var (
 func main() {
 	kingpin.Parse()
 
-	templateConfig, err := config.New(*configFilepath, *clusters)
+	templateConfig, err := config.New(*configFilepath, *instances)
 	if err != nil {
-		log.Fatalf("could not read config file: %v", err)
+		log.Fatalf("could not load config: %v", err)
 	}
 
 	GenerateFile(templateConfig, *postgresExporterConfigTemplateFilePath, *postgresExporterConfigFilePath)
