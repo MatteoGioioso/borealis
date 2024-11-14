@@ -9,11 +9,12 @@ clients:
   - url: 'http://{{.LokiHost}}:{{.LokiPort}}/loki/api/v1/push'
 
 scrape_configs:
-  - job_name: system
+  {{range .Instances}}
+  - job_name: '{{.InstanceName}}'
     static_configs:
       - targets:
-          - localhost
+          - 'localhost'
         labels:
-          job: varlogs
-          __path__: /var/log/*log
-          stream: stdout
+          job: '{{.InstanceName}}-postgres'
+          __path__: '{{.PgLogLocation}}'
+    {{end}}

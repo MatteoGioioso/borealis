@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: borealis-infrastructures
+  namespace: {{.Release.Namespace}}
+  labels:
+    application: borealis-infrastructures
+spec:
+  selector:
+    matchLabels:
+      application: borealis-infrastructures
+  serviceName: {{ .Values.serviceName }}
+  template:
+    metadata:
+      labels:
+        application: borealis-infrastructures
+    spec:
+      serviceAccountName: borealis-infrastructures
+      volumes:
+        - name: infrastructure-volume
+          persistentVolumeClaim:
+            claimName: {{.Values.storage.name}}
+      containers:
+{{/*        - name: borealis-console*/}}
+{{/*          image: {{.Values.imageName}}:{{.Values.imageVersion}}*/}}
+{{/*          imagePullPolicy: IfNotPresent*/}}
+{{/*          volumeMounts:*/}}
+{{/*            - mountPath: "/borealis/db"*/}}
+{{/*              name: infrastructure-volume*/}}
+{{/*          ports:*/}}
+{{/*            - containerPort: {{ .Values.servicePort }}*/}}
+{{/*              hostPort: {{ .Values.servicePort }}*/}}
+{{/*            - containerPort: {{ include "load.internal.grpcProxyPort" . }}*/}}
+{{/*              hostPort: {{ include "load.internal.grpcProxyPort" . }}*/}}
+{{/*          env:*/}}
+{{/*            - name: APP_HOST*/}}
+{{/*              value: {{.Values.host | quote}}*/}}
+{{/*            - name: ROOT_URL_PATH*/}}
+{{/*              value: {{.Values.rootUrlPath | quote}}*/}}
+{{/*            - name: LOG_LEVEL*/}}
+{{/*              value: {{.Values.logLevel | quote}}*/}}
+{{/*            - name: TLS_STRATEGY*/}}
+{{/*              value: {{.Values.globalTlsStrategy | quote}}*/}}
+{{/*            - name: AUTHENTICATION_STRATEGY*/}}
+{{/*              value: {{.Values.authenticationStrategy | quote}}*/}}
+{{/*            - name: CLIENT_SECRET*/}}
+{{/*              valueFrom:*/}}
+{{/*                secretKeyRef:*/}}
+{{/*                  key: clientSecret*/}}
+{{/*                  name: {{.Values.secretName}}*/}}
+{{/*            - name: OIDC_PROVIDER_ID*/}}
+{{/*              valueFrom:*/}}
+{{/*                secretKeyRef:*/}}
+{{/*                  key: oidcProviderID*/}}
+{{/*                  name: {{.Values.secretName}}*/}}
+{{/*            - name: OIDC_PROVIDER_NAME*/}}
+{{/*              valueFrom:*/}}
+{{/*                secretKeyRef:*/}}
+{{/*                  key: oidcProviderName*/}}
+{{/*                  name: {{.Values.secretName}}*/}}
+{{/*            - name: OIDC_PROVIDER_CLIENT_ID*/}}
+{{/*              valueFrom:*/}}
+{{/*                secretKeyRef:*/}}
+{{/*                  key: oidcProviderClientID*/}}
+{{/*                  name: {{.Values.secretName}}*/}}
+{{/*            - name: OIDC_PROVIDER_CLIENT_SECRET*/}}
+{{/*              valueFrom:*/}}
+{{/*                secretKeyRef:*/}}
+{{/*                  key: oidcProviderClientSecret*/}}
+{{/*                  name: {{.Values.secretName}}*/}}
+{{/*            - name: OIDC_PROVIDER_CLIENT_ISSUER_URL*/}}
+{{/*              valueFrom:*/}}
+{{/*                secretKeyRef:*/}}
+{{/*                  key: oidcProviderClientIssuerUrl*/}}
+{{/*                  name: {{.Values.secretName}}*/}}
+{{/*            - name: CLUSTER_TOKEN_LIFESPAN_MINUTES*/}}
+{{/*              value: {{.Values.clusterTokenLifespanMinutes | quote}}*/}}
+{{/*            - name: CLUSTER_TOKEN_SECRET*/}}
+{{/*              valueFrom:*/}}
+{{/*                secretKeyRef:*/}}
+{{/*                  key: clusterTokenSecret*/}}
+{{/*                  name: {{.Values.secretName}}*/}}
+{{/*            - name: DATA_RETENTION*/}}
+{{/*              value: {{.Values.dataRetentionDays | quote}}*/}}
+
+        - name: borealis-clickhouse
+          imagePullPolicy: IfNotPresent
+          image: bitnami/clickhouse:latest
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ "ALL" ]
+          volumeMounts:
+            - mountPath: "/bitnami/clickhouse"
+              name: infrastructure-volume
+          env:
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "yes"
+        - name: borealis-victoriametrics
+          imagePullPolicy: IfNotPresent
+          image: {{.Values.prometheus.imageName}}:{{.Values.prometheus.imageVersion}}
+          args: [ "--retentionPeriod={{.Values.dataRetentionDays}}d", "--httpListenAddr=:{{.Values.prometheus.port}}" ]
+          volumeMounts:
+            - mountPath: "/victoria-metrics-data"
+              name: infrastructure-volume
+      initContainers:
+        - name: clickhouse-volume-permission
+          image: bitnami/bitnami-shell:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - mountPath: "/bitnami/clickhouse"
+              name: infrastructure-volume
+          command: [ "/bin/sh" ]
+          args:
+            - -c
+            - >-
+              mkdir -p /bitnami/clickhouse/data &&
+              chmod 700 /bitnami/clickhouse/data &&
+              chown -R 1001:1001 /bitnami/clickhouse

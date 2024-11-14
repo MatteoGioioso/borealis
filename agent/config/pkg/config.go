@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
 	"log"
 	"os"
@@ -9,10 +10,66 @@ import (
 	"time"
 )
 
+var (
+	borealisDir = kingpin.Flag("borealis-dir", "").
+		Envar("BOREALIS_DIR").
+		Default("/borealis").
+		String()
+	activitySamplingInterval = kingpin.Flag("activity-sampling-interval", "").
+		Envar("ACTIVITY_SAMPLING_INTERVAL").
+		Default("1000ms").
+		Duration()
+	statementSamplingInterval = kingpin.Flag("statement-sampling-interval", "").
+		Envar("STATEMENT_SAMPLING_INTERVAL").
+		Default(time.Minute.String()).
+		Duration()
+	registerInterval = kingpin.Flag("register-interval", "interval at which the collector will register itself").
+		Envar("REGISTER_INTERVAL").
+		Default(time.Minute.String()).
+		Duration()
+	tlsStrategy = kingpin.Flag("tls-strategy", "").
+		Envar("TLS_STRATEGY").
+		Default("noop").
+		Enum("autogenerate", "custom", "noop")
+
+	lokiHost = kingpin.Flag("loki-host", "").
+		Envar("LOKI_HOST").
+		Required().
+		String()
+	lokiPort = kingpin.Flag("loki-port", "").
+		Envar("LOKI_PORT").
+		Default("3100").
+		String()
+	prometheusHost = kingpin.Flag("prometheus-host", "").
+		Envar("PROMETHEUS_HOST").
+		Required().
+		String()
+	prometheusPort = kingpin.Flag("prometheus-port", "").
+		Envar("PROMETHEUS_PORT").
+		Default("3100").
+		String()
+	borealisHost = kingpin.Flag("borealis-host", "").
+		Envar("BOREALIS_HOST").
+		Required().
+		String()
+	borealisPort = kingpin.Flag("borealis-port", "").
+		Envar("BOREALIS_PORT").
+		Default("3100").
+		String()
+
+	configFilepath = kingpin.Flag("config-filepath", "").
+		Envar("CONFIG_FILEPATH").
+		String()
+	instanceNames = kingpin.Flag("instance_names", "comma separated list").
+		Envar("INSTANCE_NAMES").
+		String()
+)
+
 type Instance struct {
-	ClusterName  string `yaml:"clusterName"`
-	InstanceName string `yaml:"instanceName"`
-	PgVersion    string `json:"pgVersion"`
+	ClusterName   string `yaml:"clusterName"`
+	InstanceName  string `yaml:"instanceName"`
+	PgVersion     string `yaml:"pgVersion"`
+	PgLogLocation string `yaml:"pgLogLocation"`
 
 	Hostname string `yaml:"hostname"`
 	Port     string `yaml:"port"`
@@ -25,8 +82,6 @@ type Instance struct {
 	// Internals
 	ExporterHostname string
 	ExporterPort     string
-	LokiHost         string `yaml:"lokiHost"`
-	LokiPort         string `yaml:"lokiPort"`
 	PromtailHost     string `yaml:"promtailHost"`
 	PromtailPort     string `yaml:"promtailPort"`
 }
@@ -40,21 +95,26 @@ type Config struct {
 	BorealisHost string `yaml:"borealisHost"`
 	BorealisPort string `yaml:"borealisPort"`
 
-	ActivitySamplingIntervalMs int `yaml:"activitySamplingIntervalMs"`
-	StatementSamplingIntervalS int `yaml:"statementSamplingInterval"`
-	RegisterIntervalS          int `yaml:"registerInterval"`
+	LokiHost string `yaml:"lokiHost"`
+	LokiPort string `yaml:"lokiPort"`
+
+	ActivitySamplingIntervalMs int    `yaml:"activitySamplingIntervalMs"`
+	StatementSamplingIntervalS int    `yaml:"statementSamplingInterval"`
+	RegisterIntervalS          int    `yaml:"registerInterval"`
+	BorealisDir                string `yaml:"borealisDir"`
 }
 
-func New(configFilepath string, instanceNames string) (*Config, error) {
+func init() {
+	kingpin.Parse()
+}
+
+func New() (*Config, error) {
 	conf := Config{}
 
-	if fromEnv, err := conf.fromEnv(instanceNames); err == nil {
-		return fromEnv, nil
-	} else {
-		log.Printf("error loading config from envvariables: %v, trying config file", err)
+	if *configFilepath != "" {
+		return conf.fromFile(*configFilepath)
 	}
-
-	return conf.fromFile(configFilepath)
+	return conf.fromEnv(*instanceNames)
 }
 
 func (c *Config) fromEnv(instanceNames string) (*Config, error) {
@@ -68,19 +128,23 @@ func (c *Config) fromEnv(instanceNames string) (*Config, error) {
 		database := fmt.Sprintf("%v_%v", instanceName, "DATABASE")
 		pgVersion := fmt.Sprintf("%v_%v", instanceName, "PG_VERSION")
 		patroniPort := fmt.Sprintf("%v_%v", instanceName, "PATRONI_PORT")
+		pgLogLocation := kingpin.
+			Flag(fmt.Sprintf("%v-%v", instanceName, "pg-log-location"), "").
+			Envar(fmt.Sprintf("%v_%v", instanceName, "PG_LOG_LOCATION")).
+			Default("/logs/postgres/*.csv").
+			String()
 
 		instance := Instance{
-			ClusterName:      os.Getenv(clusterName),
-			InstanceName:     instanceName,
-			PgVersion:        os.Getenv(pgVersion),
-			Hostname:         os.Getenv(host),
-			Port:             os.Getenv(port),
-			Username:         os.Getenv(user),
-			Password:         os.Getenv(password),
-			Database:         os.Getenv(database),
-			PatroniPort:      os.Getenv(patroniPort),
-			ExporterHostname: "",
-			ExporterPort:     "",
+			ClusterName:   os.Getenv(clusterName),
+			InstanceName:  instanceName,
+			PgVersion:     os.Getenv(pgVersion),
+			PgLogLocation: *pgLogLocation,
+			Hostname:      os.Getenv(host),
+			Port:          os.Getenv(port),
+			Username:      os.Getenv(user),
+			Password:      os.Getenv(password),
+			Database:      os.Getenv(database),
+			PatroniPort:   os.Getenv(patroniPort),
 		}
 
 		instances = append(instances, instance)
@@ -89,8 +153,16 @@ func (c *Config) fromEnv(instanceNames string) (*Config, error) {
 	c.Instances = instances
 	c.BorealisHost = os.Getenv("BOREALIS_HOST")
 	c.BorealisPort = os.Getenv("BOREALIS_PORT")
-	c.PrometheusHost = os.Getenv("PROMETHEUS_HOST")
-	c.PrometheusPort = os.Getenv("PROMETHEUS_PORT")
+	c.PrometheusHost = *prometheusHost
+	c.PrometheusPort = *prometheusPort
+	c.BorealisDir = *borealisDir
+	c.ActivitySamplingIntervalMs = int((*activitySamplingInterval).Milliseconds())
+	c.StatementSamplingIntervalS = int((*statementSamplingInterval).Seconds())
+	c.RegisterIntervalS = int((*registerInterval).Seconds())
+	c.LokiHost = *lokiHost
+	c.LokiPort = *lokiPort
+	c.BorealisHost = *borealisHost
+	c.BorealisPort = *borealisPort
 
 	if err := c.validate(); err != nil {
 		return nil, err
@@ -118,7 +190,7 @@ func (c *Config) fromFile(configFilepath string) (*Config, error) {
 func (c *Config) validate() error {
 	for i, instance := range c.Instances {
 		if instance.ClusterName == "" {
-			return fmt.Errorf("could not validate config: instance name and cluster name are required")
+			return fmt.Errorf("could not validate config: cluster name is required")
 		}
 
 		if instance.Port == "" {
@@ -139,42 +211,6 @@ func (c *Config) validate() error {
 		if instance.ExporterPort == "" {
 			c.Instances[i].ExporterPort = "9187"
 		}
-
-		if instance.LokiHost == "" {
-			instance.LokiHost = "localhost"
-		}
-
-		if instance.LokiPort == "" {
-			instance.LokiPort = "3100"
-		}
-	}
-
-	if c.PrometheusHost == "" {
-		return fmt.Errorf("could not validate config: prometheus host is required")
-	}
-
-	if c.PrometheusPort == "" {
-		return fmt.Errorf("could not validate config: prometheus port is required")
-	}
-
-	if c.BorealisHost == "" {
-		return fmt.Errorf("could not validate config: borealis host is required")
-	}
-
-	if c.BorealisPort == "" {
-		return fmt.Errorf("could not validate config: borealis port is required")
-	}
-
-	if c.ActivitySamplingIntervalMs == 0 {
-		c.ActivitySamplingIntervalMs = 1000
-	}
-
-	if c.StatementSamplingIntervalS == 0 {
-		c.StatementSamplingIntervalS = 60
-	}
-
-	if c.RegisterIntervalS == 0 {
-		c.RegisterIntervalS = 60
 	}
 
 	return nil

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: borealis-pod
+description: Chart to deploy postgres pod on kubernetes using zalando postgres operator
+type: application
+version: 0.0.0
+appVersion: 0.0.0
+maintainers:
+  - name: Matteo Gioioso
+    email: info@matteogioioso.com
+keywords:
+  - borealisdb
+  - kubernetes
+  - postgresql

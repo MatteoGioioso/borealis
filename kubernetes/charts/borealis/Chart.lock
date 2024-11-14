@@ -6,4 +6,4 @@ dependencies:
   repository: https://opensource.zalando.com/postgres-operator/charts/postgres-operator-ui
   version: 1.13.0
 digest: sha256:985f73a9b9112e84b286cc4a4819c0d07a3a7a45d7d5978151e48e86c1372a52
-generated: "2024-11-07T08:48:14.836223747+02:00"
+generated: "2024-11-13T08:37:20.95524472+02:00"

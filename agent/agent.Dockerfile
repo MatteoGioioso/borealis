@@ -8,7 +8,6 @@ ARG GID=1001
 ARG BOREALIS_DIR=/borealis
 ARG VMAGENT_VERSION=v1.89.1
 ARG EXPORT_VERSION=0.15.0
-ARG LOKI_VERSION=3.2.1
 ARG PROMTAIL_VERSION=3.2.1
 
 ENV USER=$USER
@@ -18,7 +17,6 @@ ENV GID=$GID
 ENV BOREALIS_DIR=$BOREALIS_DIR
 ENV VMAGENT_VERSION=$VMAGENT_VERSION
 ENV EXPORT_VERSION=$EXPORT_VERSION
-ENV LOKI_VERSION=$LOKI_VERSION
 ENV PROMTAIL_VERSION=$PROMTAIL_VERSION
 
 # Application variables
@@ -65,7 +63,12 @@ COPY $EXPORTER_DIR/custom_queries.yaml $BOREALIS_DIR/exporter/custom_queries.yam
 COPY postgres_agent/bin/postgres_agent $BOREALIS_DIR/agent/postgres_agent
 
 # Loki
-RUN apt-get install -y loki=$LOKI_VERSION promtail=$PROMTAIL_VERSION
+RUN mkdir -p $BOREALIS_DIR/loki \
+    && mkdir -p /etc/apt/keyrings/ \
+    && wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor > /etc/apt/keyrings/grafana.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | tee /etc/apt/sources.list.d/grafana.list \
+    && apt-get update && apt-get install -y promtail=$PROMTAIL_VERSION
+RUN mv $(which promtail) $BOREALIS_DIR/loki/promtail && mkdir -p $BOREALIS_DIR/loki/tmp/loki
 
 # runit
 COPY scripts/launch.sh $BOREALIS_DIR/launch.sh

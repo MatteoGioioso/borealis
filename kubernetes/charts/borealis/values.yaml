@@ -1,4 +1,5 @@
 logLevel: info
+dataRetentionDays: 30 # This is the data retention of the time series storage (Clickhouse, Victoriametrics)
 backup:
   enabled: true
   imageName: chrislusf/seaweedfs
@@ -10,7 +11,10 @@ storage: # Storage you want to provision for the borealis infrastructures
   size: 10Gi
   storageClassName: standard
   name: borealis-infrastructures-storage
-logs:
+prometheus:
+  port: 8428
+  imageName: victoriametrics/victoria-metrics
+  imageVersion: latest
 
 postgres-operator:
   configKubernetes:

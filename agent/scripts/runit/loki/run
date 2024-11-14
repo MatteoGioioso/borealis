@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-
-exec 2>&1
-exec env $BOREALIS_DIR/loki/loki -config.file=$LOKI_CONFIG_FILE_PATH

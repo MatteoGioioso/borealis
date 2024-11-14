@@ -23,32 +23,21 @@ import (
 )
 
 var (
-	configFilepath = kingpin.Flag("config-filepath", "").
-		Envar("CONFIG_FILEPATH").
-		Default("/config/config.yaml").
-		String()
-
 	logLevelRaw = kingpin.Flag("log-level", "").
-		Envar("LOG_LEVEL").
-		Default("info").
-		Enum("debug", "info", "warning")
+			Envar("LOG_LEVEL").
+			Default("info").
+			Enum("debug", "info", "warning")
 
 	// TODO Might not be needed
 	collectorHost = kingpin.Flag("collector-host", "").
-		Envar("COLLECTOR_HOST").
-		Default("localhost:8083").
-		String()
+			Envar("COLLECTOR_HOST").
+			Default("localhost:8083").
+			String()
 
 	grpcServerPort = kingpin.Flag("grpc-server-port", "").
-		Envar("GRPC_SERVER_PORT").
-		Default("8083").
-		String()
-
-	// Via env variables
-	instances = kingpin.Flag("instance_names", "comma separated list").
-		Envar("INSTANCE_NAMES").
-		Required().
-		String()
+			Envar("GRPC_SERVER_PORT").
+			Default("8083").
+			String()
 )
 
 func ParseFlags() {
@@ -70,7 +59,7 @@ func main() {
 
 	ctx := utils.GetContext(log)
 
-	conf, err := config.New(*configFilepath, *instances)
+	conf, err := config.New()
 	if err != nil {
 		log.Fatalln(err)
 	}

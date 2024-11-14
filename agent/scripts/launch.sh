@@ -15,11 +15,6 @@ echo "vmagent disabled"
   rm /etc/service/vmagent
 fi
 
-if [ "$LOKI_DISABLED" = "1" ]; then
-echo "loki disabled"
-  rm /etc/service/loki
-fi
-
 if [ "$PROMTAIL_DISABLED" = "1" ]; then
 echo "promtail disabled"
   rm /etc/service/promtail

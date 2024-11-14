@@ -6,24 +6,9 @@ import (
 	"log"
 	"os"
 	"text/template"
-	"time"
 )
 
 var (
-	activitySamplingInterval = kingpin.Flag("activity_sampling_interval", "").
-					Envar("ACTIVITY_SAMPLING_INTERVAL").
-					Default("1000ms").
-					Duration()
-
-	statementSamplingInterval = kingpin.Flag("statement_sampling_interval", "").
-					Envar("STATEMENT_SAMPLING_INTERVAL").
-					Default(time.Minute.String()).
-					Duration()
-	registerInterval = kingpin.Flag("register_interval", "interval at which the collector will register itself").
-				Envar("REGISTER_INTERVAL").
-				Default(time.Minute.String()).
-				Duration()
-
 	vmAgentConfigFilePath = kingpin.Flag("config-file-path", "").
 				Envar("VMAGENT_CONFIG_FILE_PATH").
 				Default("/borealis/config/prometheus.yml").
@@ -40,28 +25,12 @@ var (
 						Envar("POSTGRES_EXPORTER_CONFIG_TEMPLATE_FILE_PATH").
 						Default("/borealis/config/postgesexporter-config-template.yml").
 						String()
-
-	configFilepath = kingpin.Flag("config-filepath", "").
-			Envar("CONFIG_FILEPATH").
-			Default("/config/config.yaml").
-			String()
-
-	tlsStrategy = kingpin.Flag("tls-strategy", "").
-			Envar("TLS_STRATEGY").
-			Default("noop").
-			Enum("autogenerate", "custom", "noop")
-
-	// Via env variables
-	instances = kingpin.Flag("instance_names", "comma separated list").
-			Envar("INSTANCE_NAMES").
-			Required().
-			String()
 )
 
 func main() {
 	kingpin.Parse()
 
-	templateConfig, err := config.New(*configFilepath, *instances)
+	templateConfig, err := config.New()
 	if err != nil {
 		log.Fatalf("could not load config: %v", err)
 	}
@@ -71,6 +40,7 @@ func main() {
 
 	GenerateFile(templateConfig, *vmAgentConfigTemplateFilePath, *vmAgentConfigFilePath)
 	log.Printf("vmagent config created and stored at: %v", *vmAgentConfigFilePath)
+
 }
 
 func GenerateFile(config any, templatePath string, destFile string) {
