@@ -12,3 +12,7 @@ datasources:
       port: {{.ClickhousePort}}
       server: {{.ClickhouseHost}}
       tlsSkipVerify: {{.ClickhouseTlsSkipVerify}}
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://{{.LokiHost}}:{{.LokiPort}}

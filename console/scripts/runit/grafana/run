@@ -3,7 +3,7 @@
 set -o errexit
 set -o nounset
 
-export GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+export GF_INSTALL_PLUGINS='https://storage.googleapis.com/integration-artifacts/grafana-lokiexplore-app/grafana-lokiexplore-app-1.0.1.zip;grafana-lokiexplore-app,grafana-clickhouse-datasource'
 
 if [ ! -d "$GF_PATHS_PLUGINS" ]; then
     mkdir "$GF_PATHS_PLUGINS"
@@ -19,9 +19,9 @@ if [ ! -z "${GF_INSTALL_PLUGINS}" ]; then
     if [[ $plugin =~ .*\;.* ]]; then
         pluginUrl=$(echo "$plugin" | cut -d';' -f 1)
         pluginInstallFolder=$(echo "$plugin" | cut -d';' -f 2)
-        grafana-cli --pluginUrl ${pluginUrl} --pluginsDir "${GF_PATHS_PLUGINS}" plugins install "${pluginInstallFolder}"
+        grafana cli --pluginUrl ${pluginUrl} --pluginsDir "${GF_PATHS_PLUGINS}" plugins install "${pluginInstallFolder}"
     else
-        grafana-cli --pluginsDir "${GF_PATHS_PLUGINS}" plugins install ${plugin}
+        grafana cli --pluginsDir "${GF_PATHS_PLUGINS}" plugins install ${plugin}
     fi
   done
 fi

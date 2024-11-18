@@ -48,6 +48,14 @@ var (
 			Envar("CLICKHOUSE_PORT").
 			Default("9000").
 			String()
+	lokiHost = kingpin.Flag("loki-host", "").
+			Envar("LOKI_HOST").
+			Required().
+			String()
+	lokiPort = kingpin.Flag("loki-port", "").
+			Envar("LOKI_PORT").
+			Default("3100").
+			String()
 
 	grafanaConfigFilePath = kingpin.Flag("grafana-config-file-path", "").
 				Envar("GRAFANA_CONFIG_FILE_PATH").
@@ -99,6 +107,8 @@ type DatasourcesConfig struct {
 	ClickhouseHost          string
 	ClickhousePort          string
 	ClickhouseTlsSkipVerify bool
+	LokiHost                string
+	LokiPort                string
 }
 
 func main() {
@@ -136,6 +146,8 @@ func main() {
 		ClickhouseHost:          *clickhouseHost,
 		ClickhousePort:          *clickhousePort,
 		ClickhouseTlsSkipVerify: false,
+		LokiHost:                *lokiHost,
+		LokiPort:                *lokiPort,
 	}
 
 	GenerateFile(datasourcesConfig, grafanaDatasourcesTemplateFilePath, *grafanaDatasourcesFilePath)

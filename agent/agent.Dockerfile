@@ -22,6 +22,7 @@ ENV PROMTAIL_VERSION=$PROMTAIL_VERSION
 # Application variables
 ENV POSTGRES_EXPORTER_CONFIG_FILE_PATH=$BOREALIS_DIR/config/postgres_exporter.yml
 ENV VMAGENT_CONFIG_FILE_PATH=$BOREALIS_DIR/config/vmagent.yml
+ENV PROMTAIL_CONFIG_FILE_PATH=$BOREALIS_DIR/config/promtail.yml
 
 RUN DEBIAN_FRONTEND=noninteractive \
     && apt-get update && apt-get upgrade -y \
@@ -43,8 +44,7 @@ FROM base AS agent
 # Config
 ARG CONFIG_DIR=config
 COPY $CONFIG_DIR/bin/generate-config $BOREALIS_DIR/config/generate-config
-COPY $CONFIG_DIR/postgesexporter-config-template.yml $BOREALIS_DIR/config/postgesexporter-config-template.yml
-COPY $CONFIG_DIR/vmagent-config-template.yml $BOREALIS_DIR/config/vmagent-config-template.yml
+COPY $CONFIG_DIR/templates/ $BOREALIS_DIR/config/
 
 # VictoriaMetrics agent
 ARG VMAGENT_DIR=victoriametrics_agent

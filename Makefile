@@ -43,10 +43,14 @@ run.frontend:
 run.headless: build.backend build.agent
 	docker-compose up --build --remove-orphans
 
-run:
-	docker-compose up --build --remove-orphans
-
-build_and_run: build.console build.agent run
+docker.prerun:
+	docker volume create data-volume
+	docker create -v data-volume:/data --name tmp busybox true
+	docker cp ./misc/loki-config.yaml tmp:/data/loki-config.yaml
+	docker rm tmp
 
 down:
 	docker-compose down --remove-orphans
+
+run: build.agent build.console docker.prerun
+	docker-compose up --build --remove-orphans agent loki postgres_one console pgbench

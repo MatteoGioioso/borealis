@@ -6,8 +6,8 @@ ARG GROUP
 ARG UID=1001
 ARG GID=1001
 ARG BOREALIS_DIR=/borealis
-ARG GRAFANA_VERSION=8.5.21
-ARG NGINX_VERSION=1.23.3-1~focal
+ARG GRAFANA_VERSION=11.2.0
+ARG NGINX_VERSION=1.27.2-1~jammy
 ARG DEX_VERSION=v2.37.x
 
 ENV GIN_MODE=release
@@ -62,7 +62,7 @@ RUN DEBIAN_FRONTEND=noninteractive  \
 RUN mkdir -p $BOREALIS_DIR/nginx/tmp $BOREALIS_DIR/nginx/logs && chmod 777 -R /var/log/nginx
 
 COPY frontend/build $BOREALIS_DIR/frontend/build
-COPY proxy/proxy.sh $BOREALIS_DIR/frontend/proxy.sh
+COPY scripts/runit/nginx/run.sh $BOREALIS_DIR/frontend/proxy.sh
 
 # grafana
 RUN DEBIAN_FRONTEND=noninteractive \

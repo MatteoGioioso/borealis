@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -46,7 +45,7 @@ var (
 		String()
 	prometheusPort = kingpin.Flag("prometheus-port", "").
 		Envar("PROMETHEUS_PORT").
-		Default("3100").
+		Default("8428").
 		String()
 	borealisHost = kingpin.Flag("borealis-host", "").
 		Envar("BOREALIS_HOST").
@@ -54,7 +53,7 @@ var (
 		String()
 	borealisPort = kingpin.Flag("borealis-port", "").
 		Envar("BOREALIS_PORT").
-		Default("3100").
+		Default("8081").
 		String()
 
 	configFilepath = kingpin.Flag("config-filepath", "").
@@ -120,39 +119,52 @@ func New() (*Config, error) {
 func (c *Config) fromEnv(instanceNames string) (*Config, error) {
 	instances := make([]Instance, 0)
 	for _, instanceName := range strings.Split(instanceNames, ",") {
-		password := fmt.Sprintf("%v_%v", instanceName, "PASSWORD")
-		user := fmt.Sprintf("%v_%v", instanceName, "USERNAME")
-		clusterName := fmt.Sprintf("%v_%v", instanceName, "CLUSTER_NAME")
-		host := fmt.Sprintf("%v_%v", instanceName, "HOST")
-		port := fmt.Sprintf("%v_%v", instanceName, "PORT")
-		database := fmt.Sprintf("%v_%v", instanceName, "DATABASE")
-		pgVersion := fmt.Sprintf("%v_%v", instanceName, "PG_VERSION")
-		patroniPort := fmt.Sprintf("%v_%v", instanceName, "PATRONI_PORT")
-		pgLogLocation := kingpin.
-			Flag(fmt.Sprintf("%v-%v", instanceName, "pg-log-location"), "").
-			Envar(fmt.Sprintf("%v_%v", instanceName, "PG_LOG_LOCATION")).
-			Default("/logs/postgres/*.csv").
-			String()
+		passwordEnv := fmt.Sprintf("%v_%v", instanceName, "PASSWORD")
+		userEnv := fmt.Sprintf("%v_%v", instanceName, "USERNAME")
+		clusterNameEnv := fmt.Sprintf("%v_%v", instanceName, "CLUSTER_NAME")
+		hostEnv := fmt.Sprintf("%v_%v", instanceName, "HOST")
+		portEnv := fmt.Sprintf("%v_%v", instanceName, "PORT")
+		databaseEnv := fmt.Sprintf("%v_%v", instanceName, "DATABASE")
+		pgVersionEnv := fmt.Sprintf("%v_%v", instanceName, "PG_VERSION")
+		patroniPortEnv := fmt.Sprintf("%v_%v", instanceName, "PATRONI_PORT")
+		pgLogLocationEnv := fmt.Sprintf("%v_%v", instanceName, "PG_LOG_LOCATION")
+
+		clusterName, err := c.getEnvStringRequired(clusterNameEnv)
+		if err != nil {
+			return nil, err
+		}
+
+		username, err := c.getEnvStringRequired(userEnv)
+		if err != nil {
+			return nil, err
+		}
+
+		password, err := c.getEnvStringRequired(passwordEnv)
+		if err != nil {
+			return nil, err
+		}
 
 		instance := Instance{
-			ClusterName:   os.Getenv(clusterName),
-			InstanceName:  instanceName,
-			PgVersion:     os.Getenv(pgVersion),
-			PgLogLocation: *pgLogLocation,
-			Hostname:      os.Getenv(host),
-			Port:          os.Getenv(port),
-			Username:      os.Getenv(user),
-			Password:      os.Getenv(password),
-			Database:      os.Getenv(database),
-			PatroniPort:   os.Getenv(patroniPort),
+			ClusterName:      clusterName,
+			InstanceName:     instanceName,
+			PgVersion:        os.Getenv(pgVersionEnv),
+			PgLogLocation:    c.getEnvStringOrDefault(pgLogLocationEnv, "/logs/postgres/*.csv"),
+			Hostname:         c.getEnvStringOrDefault(hostEnv, "localhost"),
+			Port:             c.getEnvStringOrDefault(portEnv, "5423"),
+			Username:         username,
+			Password:         password,
+			Database:         c.getEnvStringOrDefault(databaseEnv, "postgres"),
+			PatroniPort:      c.getEnvStringOrDefault(patroniPortEnv, "8008"),
+			ExporterHostname: c.getEnvStringOrDefault("", "localhost"),
+			ExporterPort:     c.getEnvStringOrDefault("", "9187"),
 		}
 
 		instances = append(instances, instance)
 	}
 
 	c.Instances = instances
-	c.BorealisHost = os.Getenv("BOREALIS_HOST")
-	c.BorealisPort = os.Getenv("BOREALIS_PORT")
+	c.BorealisHost = *borealisHost
+	c.BorealisPort = *borealisPort
 	c.PrometheusHost = *prometheusHost
 	c.PrometheusPort = *prometheusPort
 	c.BorealisDir = *borealisDir
@@ -164,11 +176,23 @@ func (c *Config) fromEnv(instanceNames string) (*Config, error) {
 	c.BorealisHost = *borealisHost
 	c.BorealisPort = *borealisPort
 
-	if err := c.validate(); err != nil {
-		return nil, err
-	}
-
 	return c, nil
+}
+
+func (c *Config) getEnvStringOrDefault(name, def string) string {
+	if env, exists := os.LookupEnv(name); exists {
+		return env
+	} else {
+		return def
+	}
+}
+
+func (c *Config) getEnvStringRequired(name string) (string, error) {
+	if env, exists := os.LookupEnv(name); exists {
+		return env, nil
+	} else {
+		return "", fmt.Errorf("%v variable is required", name)
+	}
 }
 
 func (c *Config) fromFile(configFilepath string) (*Config, error) {
@@ -180,40 +204,7 @@ func (c *Config) fromFile(configFilepath string) (*Config, error) {
 		return nil, fmt.Errorf("invalid config, could not Unmarshal: %v", err)
 	}
 
-	if err := c.validate(); err != nil {
-		return nil, fmt.Errorf("could not validate: %v", err)
-	}
-
 	return c, nil
-}
-
-func (c *Config) validate() error {
-	for i, instance := range c.Instances {
-		if instance.ClusterName == "" {
-			return fmt.Errorf("could not validate config: cluster name is required")
-		}
-
-		if instance.Port == "" {
-			log.Printf("port not provided for instance %v, defaulting to 5432", instance.ClusterName)
-			c.Instances[i].Port = "5432"
-		}
-
-		if instance.PatroniPort == "" {
-			log.Printf("patroni port not provided for instance %v, defaulting to 8008", instance.ClusterName)
-			c.Instances[i].PatroniPort = "8008"
-		}
-
-		// Internals
-		if instance.ExporterHostname == "" {
-			c.Instances[i].ExporterHostname = "localhost"
-		}
-
-		if instance.ExporterPort == "" {
-			c.Instances[i].ExporterPort = "9187"
-		}
-	}
-
-	return nil
 }
 
 func (c *Config) GetInstance(instanceName string) *Instance {

@@ -3,3 +3,10 @@ apiVersion: 1
 apps:
   - type: grafana-clickhouse-datasource
     disabled: false
+  - type: grafana-lokiexplore-app
+    disabled: false
+    jsonData:
+      apiUrl: http://default-url.com
+      isApiKeySet: true
+    secureJsonData:
+      apiKey: secret-key

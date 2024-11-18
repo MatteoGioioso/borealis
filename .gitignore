@@ -7,3 +7,4 @@ manifests/secrets.yaml
 secrets.sh
 secrets.env
 misc/collector_config_test.yaml
+tmp
